@@ -472,7 +472,7 @@ select.base-select {
       <div class="metric">
         <div class="metric-card" id="gm-card">
           <div class="metric-title">Gross Margin <span>(exc. labor costs)</span></div>
-          <div class="metric-value" id="gm-val">&mdash;</div>
+          <div class="metric-value" id="gm-val">&mdash;%</div>
           <div class="metric-sub" id="gp-val"></div>
         </div>
       </div>
@@ -817,7 +817,7 @@ select.base-select {
   // ---- RENDER ----
   function render() {
     const equip = equipValue();
-    // GM is scale-invariant, so show it from a unit anchor even before Equipment is entered.
+    // Unit anchor when Equipment is blank/0, so settings errors still surface; results stay hidden until hasEquip.
     const hasEquip = Number.isFinite(equip) && equip > 0;
     const r = compute(hasEquip ? equip : 1);
     const money = k => hasEquip ? fmt$(r[k]) : '—';
@@ -830,11 +830,13 @@ select.base-select {
     el('out-other').textContent    = money('other');
     el('out-total').textContent    = money('total');
 
-    el('gm-val').textContent = fmtPct(r.gm);
-    el('gp-val').textContent = hasEquip && Number.isFinite(r.gm) ? fmt$(r.total * r.gm) + ' gross profit' : '';
+    // Gross Margin waits for an Equipment amount, like every other result.
+    const showGm = hasEquip && Number.isFinite(r.gm);
+    el('gm-val').textContent = showGm ? fmtPct(r.gm) : '—%';
+    el('gp-val').textContent = showGm ? fmt$(r.total * r.gm) + ' gross profit' : '';
     const card = el('gm-card');
     card.classList.remove('good', 'warn', 'bad');
-    if (Number.isFinite(r.gm)) {
+    if (showGm) {
       card.classList.add(r.gm >= GM_THRESHOLDS.good ? 'good' : r.gm >= GM_THRESHOLDS.warn ? 'warn' : 'bad');
     }
 
