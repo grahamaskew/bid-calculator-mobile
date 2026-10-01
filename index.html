@@ -401,6 +401,24 @@ select.base-select {
   color: #fff;
   cursor: pointer;
 }
+.lock-card {
+  display: flex; align-items: center; gap: 12px;
+  min-height: 56px;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.lock-card.on { border-color: var(--accent-mid); background: var(--accent-light); }
+.lock-card input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); }
+.lock-title { display: block; font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.lock-sub { display: block; font-size: 12.5px; color: var(--text-faint); line-height: 1.35; }
+#screen-settings.locked .card-body,
+#screen-settings.locked .reset-btn { opacity: 0.5; }
+#screen-settings.locked input[type="range"] { cursor: not-allowed; }
+.reset-btn:disabled { cursor: not-allowed; }
 .reset-btn {
   font-family: var(--sans);
   font-size: 15px; font-weight: 500;
@@ -475,6 +493,14 @@ select.base-select {
   </div>
 
   <div class="app">
+    <label class="lock-card" id="lock-card">
+      <input type="checkbox" id="lock-settings">
+      <span>
+        <span class="lock-title">Lock settings</span>
+        <span class="lock-sub">Prevents changes on this device. Only a shared settings link can replace them.</span>
+      </span>
+    </label>
+
     <div class="card">
       <div class="card-header"><span>Mix Targets</span></div>
       <div class="card-body" id="mix-body"></div>
@@ -571,12 +597,23 @@ select.base-select {
     let shared;
     try { shared = normalize(decodeSettings(raw)); }
     catch (e) { alert('That settings link is damaged, so your current settings were kept.'); return; }
-    if (!confirm('Load the shared settings? This replaces the settings saved on this device.')) return;
+    // A shared link is the one thing that may replace locked settings; the lock stays on afterwards.
+    const msg = locked
+      ? 'Load the shared settings? Your settings are locked; this replaces them and keeps them locked.'
+      : 'Load the shared settings? This replaces the settings saved on this device.';
+    if (!confirm(msg)) return;
     state = shared;
     save();
   }
   function save() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  // The lock is a per-device preference, stored apart from the settings so share links never carry it.
+  const LOCK_KEY = 'bidcalc-mobile-locked-v1';
+  let locked = false;
+  try { locked = localStorage.getItem(LOCK_KEY) === '1'; } catch (e) {}
+  function saveLock() {
+    try { localStorage.setItem(LOCK_KEY, locked ? '1' : '0'); } catch (e) {}
   }
   let state = load();
   takeSharedSettings();
@@ -701,6 +738,17 @@ select.base-select {
         changed();
       });
     });
+    applyLock();
+  }
+
+  // Disables every settings control except the lock itself and Share (sharing changes nothing).
+  function applyLock() {
+    el('lock-settings').checked = locked;
+    el('lock-card').classList.toggle('on', locked);
+    el('screen-settings').classList.toggle('locked', locked);
+    document.querySelectorAll('#screen-settings .card-body input, #screen-settings .card-body select')
+      .forEach(c => { c.disabled = locked; });
+    el('reset-btn').disabled = locked;
   }
 
   // ---- CALCULATION ----
@@ -858,7 +906,14 @@ select.base-select {
     catch (e) { prompt('Copy this settings link:', url); }
   });
 
+  el('lock-settings').addEventListener('change', e => {
+    locked = e.target.checked;
+    saveLock();
+    applyLock();
+  });
+
   el('reset-btn').addEventListener('click', () => {
+    if (locked) return;
     if (!confirm('Reset all settings to defaults?')) return;
     state = defaults();
     buildSettings();
