@@ -770,8 +770,8 @@ select.base-select {
   function render() {
     const equip = equipValue();
     // GM is scale-invariant, so show it from a unit anchor even before Equipment is entered.
-    const r = compute(Number.isFinite(equip) ? equip : 1);
     const hasEquip = Number.isFinite(equip) && equip > 0;
+    const r = compute(hasEquip ? equip : 1);
     const money = k => hasEquip ? fmt$(r[k]) : '—';
 
     el('out-parts').textContent    = money('parts');
