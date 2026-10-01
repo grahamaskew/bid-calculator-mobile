@@ -515,6 +515,7 @@ select.base-select {
   ];
   const BASES = [
     { key: 'proposal',  label: 'of proposal total' },
+    { key: 'proposalExOpt', label: 'of proposal total exc. Optional' },
     { key: 'equipment', label: 'of equipment total' },
     { key: 'labor',     label: 'of labor total' }
   ];
@@ -706,13 +707,20 @@ select.base-select {
 
     const errors = [];
 
+    // Adds on a proposal base are a share of a Total that includes them, so they gross up.
     // Sum whole percents before dividing: 0.7 + 0.2 + 0.1 is 0.9999999999999999 in floats.
-    let ppPct = 0;
-    ADDS.forEach(a => { if (state.adds[a.key].base === 'proposal') ppPct += state.adds[a.key].pct; });
-    if (ppPct >= 100) errors.push('"Of proposal total" labor adds total ' + ppPct + '% — must be below 100%.');
-    const pp = ppPct / 100;
+    const PROPOSAL_BASES = ['proposal', 'proposalExOpt'];
+    let ppPct = 0, pxPct = 0;
+    ADDS.forEach(a => {
+      const ad = state.adds[a.key];
+      if (ad.base === 'proposal') ppPct += ad.pct;
+      if (ad.base === 'proposalExOpt') pxPct += ad.pct;
+    });
+    const proposalPct = ppPct + pxPct;
+    if (proposalPct >= 100) errors.push('Labor adds on a proposal-total base total ' + proposalPct + '% — must be below 100%.');
+    const pp = ppPct / 100, px = pxPct / 100;
 
-    const r = { errors, ppPct };
+    const r = { errors, proposalPct };
     if (errors.length || !Number.isFinite(equip)) return r;
 
     const t0 = equip / mixE;
@@ -725,12 +733,14 @@ select.base-select {
     let fixed = 0;
     ADDS.forEach(a => {
       const ad = state.adds[a.key];
-      if (ad.base !== 'proposal') { r[a.key] = (ad.pct / 100) * baseOf[ad.base]; fixed += r[a.key]; }
+      if (!PROPOSAL_BASES.includes(ad.base)) { r[a.key] = (ad.pct / 100) * baseOf[ad.base]; fixed += r[a.key]; }
     });
-    r.total = (t0 + fixed) / (1 - pp);
+    // Total = T0 + fixed + pp·Total + px·(Total − Optional)
+    r.total = (t0 + fixed - px * r.optional) / (1 - pp - px);
     ADDS.forEach(a => {
       const ad = state.adds[a.key];
       if (ad.base === 'proposal') r[a.key] = (ad.pct / 100) * r.total;
+      if (ad.base === 'proposalExOpt') r[a.key] = (ad.pct / 100) * (r.total - r.optional);
     });
 
     const cost = equip * (1 - mE) + r.parts * (1 - mP) + r.optional * (1 - mO);
@@ -780,8 +790,8 @@ select.base-select {
     el('mix-equip-out').textContent = 100 - mixOthers(state.mix);
 
     // Settings: proposal-base gross-up guard
-    el('pp-warn').textContent = r.ppPct >= 100 ? '⚠ "Of proposal total" items total ' + r.ppPct + '% — must be below 100%' : '';
-    el('pp-row').style.display = r.ppPct >= 100 ? 'flex' : 'none';
+    el('pp-warn').textContent = r.proposalPct >= 100 ? '⚠ Labor adds on a proposal-total base total ' + r.proposalPct + '% — must be below 100%' : '';
+    el('pp-row').style.display = r.proposalPct >= 100 ? 'flex' : 'none';
 
     // Settings: zero warnings
     const zw = zeroWarnings();
