@@ -875,7 +875,10 @@ select.base-select {
   el('close-settings').addEventListener('click', () => {
     // Pop the entry we pushed so Back doesn't bounce into Settings again.
     if (openedFromMain) { openedFromMain = false; history.back(); }
-    else history.replaceState(null, '', location.pathname + location.search), showScreen();
+    else {
+      history.replaceState(null, '', location.pathname + location.search);
+      showScreen();
+    }
   });
   window.addEventListener('hashchange', showScreen);
 
