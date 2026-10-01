@@ -254,6 +254,7 @@ body {
   margin-top: 6px;
   letter-spacing: -0.5px;
 }
+.metric-sub { font-family: var(--mono); font-size: 15px; font-weight: 600; margin-top: 2px; }
 .metric-card.good { border-color: var(--accent-mid); background: var(--accent-light); }
 .metric-card.warn { border-color: var(--amber); background: var(--amber-light); }
 .metric-card.bad  { border-color: var(--red); background: var(--red-light); }
@@ -382,6 +383,16 @@ select.base-select {
 .sum-val.bad { background: var(--red-light); color: var(--red); }
 .sum-warn { font-size: 13px; color: var(--red); font-weight: 600; }
 
+.share-btn {
+  font-family: var(--sans);
+  font-size: 15px; font-weight: 600;
+  min-height: 48px;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
 .reset-btn {
   font-family: var(--sans);
   font-size: 15px; font-weight: 500;
@@ -436,6 +447,7 @@ select.base-select {
         <div class="metric-card" id="gm-card">
           <div class="metric-title">Gross Margin<br><span>exc. labor costs</span></div>
           <div class="metric-value" id="gm-val">&mdash;</div>
+          <div class="metric-sub" id="gp-val"></div>
         </div>
       </div>
     </div>
@@ -470,6 +482,7 @@ select.base-select {
       <div class="card-body" id="adds-body"></div>
     </div>
 
+    <button class="share-btn" id="share-btn">Share settings link</button>
     <button class="reset-btn" id="reset-btn">Reset all settings to defaults</button>
   </div>
 </div>
@@ -506,29 +519,57 @@ select.base-select {
     mix:    { parts: 5, optional: 0, labor: 35 },
     margin: { equip: 0, parts: 0, optional: 0 },
     adds:   { design: { pct: 0, base: 'proposal' }, pm: { pct: 0, base: 'proposal' }, other: { pct: 0, base: 'proposal' } },
-    accept: {}   // e.g. 'margin.equip': true, 'adds.pm': true
+    accept: {}   // e.g. 'margin.equip': true, 'mix.optional': true
   });
 
   // ---- STATE + STORAGE ----
-  function load() {
+  // Validates settings from storage or a shared link; anything missing or out of range falls back to defaults.
+  function normalize(s) {
     const d = defaults();
+    const pct = (v, dv) => Number.isFinite(v) ? Math.min(100, Math.max(0, Math.round(v))) : dv;
+    const mix = {}, margin = {}, adds = {}, accept = {};
+    MIX.forEach(m => { mix[m.key] = pct((s.mix || {})[m.key], d.mix[m.key]); });
+    MARGINS.forEach(m => { margin[m.key] = pct((s.margin || {})[m.key], d.margin[m.key]); });
+    ADDS.forEach(a => {
+      const x = (s.adds || {})[a.key] || {};
+      adds[a.key] = { pct: pct(x.pct, d.adds[a.key].pct), base: BASES.some(b => b.key === x.base) ? x.base : d.adds[a.key].base };
+    });
+    Object.keys(s.accept || {}).forEach(k => { if (s.accept[k] === true) accept[k] = true; });
+    return { mix: mixOthers(mix) <= MAX_OTHERS ? mix : d.mix, margin, adds, accept };
+  }
+  function load() {
     try {
       const s = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-      if (!s) return d;
-      const mix = { parts: d.mix.parts, optional: d.mix.optional, labor: d.mix.labor };
-      MIX.forEach(m => { if (s.mix && Number.isFinite(s.mix[m.key])) mix[m.key] = s.mix[m.key]; });
-      return {
-        mix:    mixOthers(mix) <= MAX_OTHERS ? mix : d.mix,
-        margin: { ...d.margin, ...s.margin },
-        adds:   Object.fromEntries(ADDS.map(a => [a.key, { ...d.adds[a.key], ...(s.adds || {})[a.key] }])),
-        accept: { ...s.accept }
-      };
-    } catch (e) { return d; }
+      return s ? normalize(s) : defaults();
+    } catch (e) { return defaults(); }
+  }
+
+  // Shared settings travel in ?s=<base64url JSON>.
+  const encodeSettings = st => btoa(unescape(encodeURIComponent(JSON.stringify(st))))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const decodeSettings = str => JSON.parse(decodeURIComponent(escape(atob(str.replace(/-/g, '+').replace(/_/g, '/')))));
+  function shareUrl() {
+    return location.origin + location.pathname + '?s=' + encodeSettings(state);
+  }
+  function takeSharedSettings() {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get('s');
+    if (!raw) return;
+    params.delete('s');
+    const rest = params.toString();
+    history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
+    let shared;
+    try { shared = normalize(decodeSettings(raw)); }
+    catch (e) { alert('That settings link is damaged, so your current settings were kept.'); return; }
+    if (!confirm('Load the shared settings? This replaces the settings saved on this device.')) return;
+    state = shared;
+    save();
   }
   function save() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
   }
   let state = load();
+  takeSharedSettings();
 
   // ---- HELPERS ----
   const el = id => document.getElementById(id);
@@ -624,13 +665,11 @@ select.base-select {
     const addsBody = el('adds-body');
     addsBody.innerHTML = '';
     ADDS.forEach(a => {
-      const ak = 'adds.' + a.key;
       const opts = BASES.map(b => `<option value="${b.key}">${b.label}</option>`).join('');
       const row = sliderRow('adds-' + a.key, a.label, state.adds[a.key].pct, v => {
         state.adds[a.key].pct = v;
-        if (v > 0) delete state.accept[ak];
         changed();
-      }, `<select class="base-select" id="adds-${a.key}-base" aria-label="${a.label} base">${opts}</select>` + zeroWarnHtml(ak));
+      }, `<select class="base-select" id="adds-${a.key}-base" aria-label="${a.label} base">${opts}</select>`);
       const sel = row.querySelector('select');
       sel.value = state.adds[a.key].base;
       sel.addEventListener('change', () => { state.adds[a.key].base = sel.value; changed(); });
@@ -689,14 +728,12 @@ select.base-select {
     return r;
   }
 
-  // Unaccepted 0% margins / labor adds.
-  // Settings that may warn at 0%. Optional mix and Optional margin are a pair:
+  // Settings that may warn at 0%. Additional labor never warns: 0% is a valid "none". Optional mix and Optional margin are a pair:
   // each warns at 0% only once the other is above 0% (Optional unused = no warning).
   const ZERO_CHECKS = [
     ...MARGINS.filter(m => m.key !== 'optional').map(m => ({ ak: 'margin.' + m.key, pct: () => state.margin[m.key], applies: () => true })),
     { ak: 'margin.optional', pct: () => state.margin.optional, applies: () => state.mix.optional > 0 },
-    { ak: 'mix.optional',    pct: () => state.mix.optional,    applies: () => state.margin.optional > 0 },
-    ...ADDS.map(a => ({ ak: 'adds.' + a.key, pct: () => state.adds[a.key].pct, applies: () => true }))
+    { ak: 'mix.optional',    pct: () => state.mix.optional,    applies: () => state.margin.optional > 0 }
   ];
   const needsZeroWarn = c => c.pct() === 0 && c.applies();
 
@@ -722,6 +759,7 @@ select.base-select {
     el('out-total').textContent    = money('total');
 
     el('gm-val').textContent = fmtPct(r.gm);
+    el('gp-val').textContent = hasEquip && Number.isFinite(r.gm) ? fmt$(r.total * r.gm) + ' gross profit' : '';
     const card = el('gm-card');
     card.classList.remove('good', 'warn', 'bad');
     if (Number.isFinite(r.gm)) {
@@ -779,6 +817,19 @@ select.base-select {
   equipInput.addEventListener('keydown', e => { if (e.key === 'Enter') equipInput.blur(); });
 
   el('clear-btn').addEventListener('click', () => { equipInput.value = ''; render(); });
+
+  el('share-btn').addEventListener('click', async () => {
+    const url = shareUrl();
+    const btn = el('share-btn');
+    const flash = msg => { btn.textContent = msg; setTimeout(() => { btn.textContent = 'Share settings link'; }, 2000); };
+    // Phones: native share sheet. Laptops: copy to clipboard.
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+      try { await navigator.share({ title: 'Bid Calculator settings', url }); } catch (e) {}
+      return;
+    }
+    try { await navigator.clipboard.writeText(url); flash('Link copied ✓'); }
+    catch (e) { prompt('Copy this settings link:', url); }
+  });
 
   el('reset-btn').addEventListener('click', () => {
     if (!confirm('Reset all settings to defaults?')) return;
