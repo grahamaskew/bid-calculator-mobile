@@ -519,6 +519,7 @@ select.base-select {
     { key: 'equipment', label: 'of equipment total' },
     { key: 'labor',     label: 'of labor total' }
   ];
+  const ADDS_SLIDER_MAX = 25;   // Additional labor sliders span 0–25% for finer control; typed values go to 100%
   const GM_THRESHOLDS = { good: 0.45, warn: 0.30 };
   const STORE_KEY = 'bidcalc-mobile-settings-v1';
   const MAX_OTHERS = 99;   // keeps Equipment mix at 1% or more, so it can anchor the bid
@@ -594,7 +595,8 @@ select.base-select {
 
   // ---- SLIDER FACTORY ----
   // Builds: label, % box (tap to type), range slider. onChange gets the clamped integer.
-  function sliderRow(id, label, value, onChange, extraHtml = '') {
+  // rangeMax narrows the slider only; the % box still accepts 0–100 (slider then sits at its end).
+  function sliderRow(id, label, value, onChange, extraHtml = '', rangeMax = 100) {
     const wrap = document.createElement('div');
     wrap.className = 'slider-row';
     wrap.innerHTML = `
@@ -605,14 +607,15 @@ select.base-select {
           <span class="pct-sign">%</span>
         </span>
       </div>
-      <input type="range" id="${id}-range" min="0" max="100" step="1" value="${value}" aria-label="${label}">
+      <input type="range" id="${id}-range" min="0" max="${rangeMax}" step="1" value="${value}" aria-label="${label}">
       ${extraHtml}`;
     const num = wrap.querySelector('.pct-input');
     const range = wrap.querySelector('input[type=range]');
+    let current = value;   // the slider can't hold typed values above rangeMax, so remember the real one
     const apply = v => {
       const out = onChange(v);
-      const final = out === undefined ? v : out;
-      num.value = final; range.value = final;
+      current = out === undefined ? v : out;
+      num.value = current; range.value = current;
     };
     range.addEventListener('input', () => apply(+range.value));
     num.addEventListener('focus', () => num.select());
@@ -620,10 +623,11 @@ select.base-select {
       if (num.value === '') return;
       const v = clamp(+num.value);
       const out = onChange(v);
-      range.value = out === undefined ? v : out;
+      current = out === undefined ? v : out;
+      range.value = current;
     });
     num.addEventListener('blur', () => {
-      apply(num.value === '' ? +range.value : clamp(+num.value));
+      apply(num.value === '' ? current : clamp(+num.value));
     });
     num.addEventListener('keydown', e => { if (e.key === 'Enter') num.blur(); });
     return wrap;
@@ -678,7 +682,7 @@ select.base-select {
       const row = sliderRow('adds-' + a.key, a.label, state.adds[a.key].pct, v => {
         state.adds[a.key].pct = v;
         changed();
-      }, `<select class="base-select" id="adds-${a.key}-base" aria-label="${a.label} base">${opts}</select>`);
+      }, `<select class="base-select" id="adds-${a.key}-base" aria-label="${a.label} base">${opts}</select>`, ADDS_SLIDER_MAX);
       const sel = row.querySelector('select');
       sel.value = state.adds[a.key].base;
       sel.addEventListener('change', () => { state.adds[a.key].base = sel.value; changed(); });
