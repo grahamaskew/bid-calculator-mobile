@@ -671,8 +671,18 @@ select.base-select {
 
   // ---- HELPERS ----
   const el = id => document.getElementById(id);
-  const fmt$ = v => Number.isFinite(v) ? '$' + Math.round(v).toLocaleString('en-US') : '—';
-  const fmtPct = v => Number.isFinite(v) ? (v * 100).toFixed(1) + '%' : '—';
+  // Round half up, treating a value a hair below .5 as .5: an exact $X.50 can arrive as
+  // X.4999999998 after float division and would otherwise display $1 low.
+  // Dollars: tolerance 2e-14·|v| (measured float error on true halves ≤ 6.4e-15·|v|; genuine
+  // below-half values sat ≥ 5.3e-14·|v| from .5 across 400k exact-arithmetic checks).
+  // GM tenths: GM's error is absolute (it is 1 − cost/total), measured ≤ 2.3e-13 vs a genuine
+  // gap ≥ 4e-5, so it gets a fixed 1e-9.
+  const roundHalfUp = (v, tol = Math.abs(v) * 2e-14) => {
+    const r = Math.round(v), fl = Math.floor(v);
+    return r === fl && v - fl > 0.5 - tol ? fl + 1 : r;
+  };
+  const fmt$ = v => Number.isFinite(v) ? '$' + roundHalfUp(v).toLocaleString('en-US') : '—';
+  const fmtPct = v => Number.isFinite(v) ? (roundHalfUp(v * 1000, 1e-9) / 10).toFixed(1) + '%' : '—';
   const clamp = v => Math.min(100, Math.max(0, Math.round(v)));
   const equipValue = () => {
     const raw = el('equip').value.replace(/,/g, '');
