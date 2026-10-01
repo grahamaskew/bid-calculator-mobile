@@ -584,6 +584,7 @@ select.base-select {
     { key: 'equipment', label: 'of equipment total' },
     { key: 'labor',     label: 'of labor total' }
   ];
+  const PROPOSAL_WARN_PCT = 50;  // combined proposal-based labor adds above this are flagged (still allowed below 100)
   const ADDS_SLIDER_MAX = 25;   // Additional labor sliders span 0–25% for finer control; typed values go to 100%
   const GM_THRESHOLDS = { good: 0.45, warn: 0.30 };
   const STORE_KEY = 'bidcalc-mobile-settings-v1';
@@ -905,8 +906,12 @@ select.base-select {
     el('mix-equip-out').textContent = 100 - mixOthers(state.mix);
 
     // Settings: proposal-base gross-up guard
-    el('pp-warn').textContent = r.proposalPct >= 100 ? '⚠ Labor adds on a proposal-total base total ' + r.proposalPct + '% — must be below 100%' : '';
-    el('pp-row').style.display = r.proposalPct >= 100 ? 'flex' : 'none';
+    const ppHigh = r.proposalPct > PROPOSAL_WARN_PCT && r.proposalPct < 100;
+    el('pp-warn').textContent = r.proposalPct >= 100
+      ? '⚠ Labor adds on a proposal-total base total ' + r.proposalPct + '% — must be below 100%'
+      : ppHigh ? '⚠ Labor adds on a proposal-total base total ' + r.proposalPct + '% — unusually high (above ' + PROPOSAL_WARN_PCT + '%)' : '';
+    el('pp-warn').style.color = ppHigh ? 'var(--amber)' : '';
+    el('pp-row').style.display = r.proposalPct >= 100 || ppHigh ? 'flex' : 'none';
 
     // Settings: zero warnings
     const zw = zeroWarnings();
@@ -918,11 +923,14 @@ select.base-select {
     });
 
     // Primary: badge + notice
-    const issues = r.errors.length + zw.length;
+    const issues = r.errors.length + zw.length + (ppHigh ? 1 : 0);
     el('settings-badge').classList.toggle('on', issues > 0);
     const notice = el('main-notice');
     if (r.errors.length) {
       notice.textContent = '⚠ ' + r.errors[0] + ' Tap to fix in Settings.';
+      notice.classList.add('on');
+    } else if (ppHigh) {
+      notice.textContent = '⚠ Labor adds on a proposal-total base total ' + r.proposalPct + '% — unusually high. Tap to check Settings.';
       notice.classList.add('on');
     } else if (zw.length) {
       notice.textContent = '⚠ ' + zw.length + ' setting' + (zw.length > 1 ? 's are' : ' is') + ' at 0%. Tap to review in Settings.';
