@@ -261,6 +261,19 @@ body {
   -moz-appearance: textfield;
 }
 .pct-input::-webkit-inner-spin-button, .pct-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.computed-pct {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 700;
+  text-align: right;
+  width: 64px;
+  padding: 8px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+}
 .pct-sign { font-family: var(--mono); font-size: 15px; color: var(--text-faint); }
 
 input[type="range"] {
@@ -427,8 +440,8 @@ select.base-select {
 
 <script>
   // ---- CONFIG ----
+  // Equipment mix is not a slider: it is the balance, 100% − (Parts + Optional + Labor).
   const MIX = [
-    { key: 'equip',    label: 'Equipment' },
     { key: 'parts',    label: 'Parts' },
     { key: 'optional', label: 'Optional' },
     { key: 'labor',    label: 'Labor' }
@@ -450,9 +463,11 @@ select.base-select {
   ];
   const GM_THRESHOLDS = { good: 0.45, warn: 0.30 };
   const STORE_KEY = 'bidcalc-mobile-settings-v1';
+  const MAX_OTHERS = 99;   // keeps Equipment mix at 1% or more, so it can anchor the bid
+  const mixOthers = mix => mix.parts + mix.optional + mix.labor;
 
   const defaults = () => ({
-    mix:    { equip: 60, parts: 5, optional: 0, labor: 35 },
+    mix:    { parts: 5, optional: 0, labor: 35 },
     margin: { equip: 0, parts: 0, optional: 0 },
     adds:   { design: { pct: 0, base: 'proposal' }, pm: { pct: 0, base: 'proposal' }, other: { pct: 0, base: 'proposal' } },
     accept: {}   // e.g. 'margin.equip': true, 'adds.pm': true
@@ -464,8 +479,10 @@ select.base-select {
     try {
       const s = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
       if (!s) return d;
+      const mix = { parts: d.mix.parts, optional: d.mix.optional, labor: d.mix.labor };
+      MIX.forEach(m => { if (s.mix && Number.isFinite(s.mix[m.key])) mix[m.key] = s.mix[m.key]; });
       return {
-        mix:    { ...d.mix, ...s.mix },
+        mix:    mixOthers(mix) <= MAX_OTHERS ? mix : d.mix,
         margin: { ...d.margin, ...s.margin },
         adds:   Object.fromEntries(ADDS.map(a => [a.key, { ...d.adds[a.key], ...(s.adds || {})[a.key] }])),
         accept: { ...s.accept }
@@ -506,17 +523,21 @@ select.base-select {
       ${extraHtml}`;
     const num = wrap.querySelector('.pct-input');
     const range = wrap.querySelector('input[type=range]');
-    range.addEventListener('input', () => { num.value = range.value; onChange(+range.value); });
+    const apply = v => {
+      const out = onChange(v);
+      const final = out === undefined ? v : out;
+      num.value = final; range.value = final;
+    };
+    range.addEventListener('input', () => apply(+range.value));
     num.addEventListener('focus', () => num.select());
     num.addEventListener('input', () => {
       if (num.value === '') return;
       const v = clamp(+num.value);
-      range.value = v;
-      onChange(v);
+      const out = onChange(v);
+      range.value = out === undefined ? v : out;
     });
     num.addEventListener('blur', () => {
-      const v = num.value === '' ? +range.value : clamp(+num.value);
-      num.value = v; range.value = v; onChange(v);
+      apply(num.value === '' ? +range.value : clamp(+num.value));
     });
     num.addEventListener('keydown', e => { if (e.key === 'Enter') num.blur(); });
     return wrap;
@@ -533,15 +554,23 @@ select.base-select {
   function buildSettings() {
     const mixBody = el('mix-body');
     mixBody.innerHTML = '';
+    const eqRow = document.createElement('div');
+    eqRow.className = 'slider-row';
+    eqRow.innerHTML = `
+      <div class="slider-top">
+        <span class="slider-label">Equipment <small style="color:var(--text-faint);font-size:12px">(balance of 100%)</small></span>
+        <span class="pct-wrap"><span class="computed-pct" id="mix-equip-out"></span><span class="pct-sign">%</span></span>
+      </div>`;
+    mixBody.appendChild(eqRow);
     MIX.forEach(m => {
       mixBody.appendChild(sliderRow('mix-' + m.key, m.label, state.mix[m.key], v => {
-        state.mix[m.key] = v; changed();
+        // Cap so the others never leave Equipment below 1%.
+        const room = MAX_OTHERS - (mixOthers(state.mix) - state.mix[m.key]);
+        state.mix[m.key] = Math.min(v, room);
+        changed();
+        return state.mix[m.key];
       }));
     });
-    const sum = document.createElement('div');
-    sum.className = 'sum-row';
-    sum.innerHTML = `<span class="sum-label">Sum:</span><span class="sum-val" id="mix-sum"></span><span class="sum-warn" id="mix-warn"></span>`;
-    mixBody.appendChild(sum);
 
     const marginBody = el('margin-body');
     marginBody.innerHTML = '';
@@ -587,19 +616,16 @@ select.base-select {
   // ---- CALCULATION ----
   function compute(equip) {
     const mx = state.mix;
-    const mixSum = mx.equip + mx.parts + mx.optional + mx.labor;
-    const mixE = mx.equip / 100, mixP = mx.parts / 100, mixO = mx.optional / 100, mixL = mx.labor / 100;
+    const mixE = (100 - mixOthers(mx)) / 100, mixP = mx.parts / 100, mixO = mx.optional / 100, mixL = mx.labor / 100;
     const mE = state.margin.equip / 100, mP = state.margin.parts / 100, mO = state.margin.optional / 100;
 
     const errors = [];
-    if (mixSum !== 100) errors.push('Mix targets total ' + mixSum + '% — must be 100%.');
-    else if (mx.equip === 0) errors.push('Equipment mix is 0% — it must be above 0% to anchor the bid.');
 
     let pp = 0;
     ADDS.forEach(a => { if (state.adds[a.key].base === 'proposal') pp += state.adds[a.key].pct / 100; });
     if (pp >= 1) errors.push('"Of proposal total" labor adds total ' + Math.round(pp * 100) + '% — must be below 100%.');
 
-    const r = { errors, mixSum, pp };
+    const r = { errors, pp };
     if (errors.length || !Number.isFinite(equip)) return r;
 
     const t0 = equip / mixE;
@@ -656,11 +682,8 @@ select.base-select {
       card.classList.add(r.gm >= GM_THRESHOLDS.good ? 'good' : r.gm >= GM_THRESHOLDS.warn ? 'warn' : 'bad');
     }
 
-    // Settings: mix sum
-    const sumEl = el('mix-sum');
-    sumEl.textContent = r.mixSum + '%';
-    sumEl.className = 'sum-val ' + (r.mixSum === 100 ? 'ok' : 'bad');
-    el('mix-warn').textContent = r.mixSum === 100 ? (state.mix.equip === 0 ? '⚠ Equipment must be above 0%' : '') : '⚠ Must total 100%';
+    // Settings: Equipment mix = balance
+    el('mix-equip-out').textContent = 100 - mixOthers(state.mix);
 
     // Settings: proposal-base gross-up guard
     el('pp-warn').textContent = r.pp >= 1 ? '⚠ "Of proposal total" items total ' + Math.round(r.pp * 100) + '% — must be below 100%' : '';
