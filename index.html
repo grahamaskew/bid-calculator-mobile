@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#102A43">
+<title>Bid Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --navy:          #102A43;
+  --navy-text:     rgba(255,255,255,0.65);
+  --accent:        #2F80ED;
+  --accent-dark:   #1A65C8;
+  --accent-light:  #EBF4FE;
+  --accent-mid:    #93C5FD;
+  --teal-dark:     #0D9488;
+  --teal-light:    #E6FAF8;
+  --text-primary:  #1F2937;
+  --text-muted:    #475569;
+  --text-faint:    #64748B;
+  --bg-page:       #F6F8FB;
+  --bg-card:       #FFFFFF;
+  --bg-subtle:     #F1F5F9;
+  --border:        #E2E8F0;
+  --amber:         #B45309;
+  --amber-light:   #FEF3C7;
+  --red:           #B91C1C;
+  --red-light:     #FEE2E2;
+  --input-bg:      #EBF4FE;
+  --input-border:  #DC2626;
+  --sans: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'Courier New', monospace;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+body {
+  font-family: var(--sans);
+  font-size: 16px;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* ── TOPBAR ── */
+.app-topbar {
+  background: var(--navy);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding-top: env(safe-area-inset-top);
+}
+.app-header {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 60px;
+}
+.app-title { font-size: 20px; font-weight: 600; color: #fff; letter-spacing: -0.3px; line-height: 1.2; }
+.app-sub { font-size: 13px; color: var(--navy-text); margin-top: 2px; }
+
+.icon-btn {
+  position: relative;
+  width: 44px; height: 44px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.icon-btn:active { background: rgba(255,255,255,0.2); }
+.badge {
+  position: absolute; top: -4px; right: -4px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--input-border);
+  border: 2px solid var(--navy);
+  display: none;
+}
+.badge.on { display: block; }
+
+.back-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 44px; padding: 0 14px 0 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.08);
+  color: #fff; font-family: var(--sans); font-size: 15px; font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── LAYOUT ── */
+.screen { display: none; }
+.screen.active { display: block; }
+.app {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 16px 16px calc(32px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── CARDS ── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.card-header {
+  background: var(--navy);
+  color: #fff;
+  padding: 12px 16px;
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 600;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.card-header.accent { background: var(--accent); }
+.card-body { padding: 4px 16px 12px; }
+
+/* ── ROWS ── */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--bg-subtle);
+}
+.row:last-child { border-bottom: none; }
+.row-label { font-size: 15px; color: var(--text-muted); line-height: 1.3; }
+.row-label small { font-size: 12px; color: var(--text-faint); }
+.row-label.strong { font-weight: 700; color: var(--text-primary); }
+.row.group-start { border-top: 1px solid var(--border); }
+
+.currency-input {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 600;
+  text-align: right;
+  border: 1.5px solid var(--input-border);
+  background: var(--input-bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+  width: 150px;
+  min-height: 44px;
+  color: var(--text-primary);
+  outline: none;
+}
+.currency-input:focus { box-shadow: 0 0 0 3px rgba(220,38,38,0.15); }
+
+.computed {
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 600;
+  text-align: right;
+  min-width: 150px;
+  padding: 8px 10px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.computed.total {
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--accent);
+  background: var(--accent-light);
+  border-color: var(--accent-mid);
+}
+
+.text-btn {
+  font-family: var(--sans);
+  font-size: 13px; font-weight: 500;
+  color: #fff;
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 8px;
+  min-height: 36px; padding: 0 14px;
+  cursor: pointer;
+  letter-spacing: normal; text-transform: none;
+}
+
+/* ── GROSS MARGIN ── */
+.metric { padding: 16px; }
+.metric-card {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.metric-title { font-size: 14px; color: var(--text-muted); line-height: 1.3; }
+.metric-title span { font-weight: 300; font-size: 13px; }
+.metric-value {
+  font-family: var(--mono);
+  font-size: 34px;
+  font-weight: 600;
+  margin-top: 6px;
+  letter-spacing: -0.5px;
+}
+.metric-card.good { border-color: var(--accent-mid); background: var(--accent-light); }
+.metric-card.warn { border-color: var(--amber); background: var(--amber-light); }
+.metric-card.bad  { border-color: var(--red); background: var(--red-light); }
+.metric-card.good .metric-value, .metric-card.good .metric-title { color: var(--accent); }
+.metric-card.warn .metric-value, .metric-card.warn .metric-title { color: var(--amber); }
+.metric-card.bad  .metric-value, .metric-card.bad  .metric-title { color: var(--red); }
+
+.notice {
+  display: none;
+  margin: 0 16px 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--red-light);
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  text-align: left;
+  font-family: var(--sans);
+  width: calc(100% - 32px);
+  cursor: pointer;
+}
+.notice.on { display: block; }
+
+/* ── SETTINGS: SLIDERS ── */
+.slider-row { padding: 10px 0; border-bottom: 1px solid var(--bg-subtle); }
+.slider-row:last-child { border-bottom: none; }
+.slider-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.slider-label { font-size: 15px; color: var(--text-muted); }
+.pct-wrap { display: flex; align-items: center; gap: 4px; }
+.pct-input {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 700;
+  text-align: right;
+  width: 64px;
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 1.5px solid var(--input-border);
+  background: var(--input-bg);
+  border-radius: 8px;
+  color: var(--accent);
+  outline: none;
+  -moz-appearance: textfield;
+}
+.pct-input::-webkit-inner-spin-button, .pct-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.pct-sign { font-family: var(--mono); font-size: 15px; color: var(--text-faint); }
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--border); }
+input[type="range"]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--border); }
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px; height: 28px; margin-top: -11px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid #fff;
+  box-shadow: 0 1px 5px rgba(47,128,237,0.4);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid #fff;
+  box-shadow: 0 1px 5px rgba(47,128,237,0.4);
+}
+
+select.base-select {
+  font-family: var(--sans);
+  font-size: 16px;
+  min-height: 44px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1.5px solid var(--input-border);
+  background: var(--input-bg);
+  border-radius: 8px;
+  color: var(--text-primary);
+}
+
+.zero-warn {
+  display: none;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--amber-light);
+  color: var(--amber);
+  font-size: 13px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.zero-warn.on { display: flex; }
+.zero-warn.accepted { background: var(--bg-subtle); color: var(--text-faint); }
+.zero-warn label { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.zero-warn input { width: 20px; height: 20px; accent-color: var(--amber); }
+
+.sum-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--border);
+}
+.sum-label { font-size: 13px; color: var(--text-faint); }
+.sum-val { font-family: var(--mono); font-size: 15px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+.sum-val.ok { background: var(--teal-light); color: var(--teal-dark); }
+.sum-val.bad { background: var(--red-light); color: var(--red); }
+.sum-warn { font-size: 13px; color: var(--red); font-weight: 600; }
+
+.reset-btn {
+  font-family: var(--sans);
+  font-size: 15px; font-weight: 500;
+  min-height: 48px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--red);
+  cursor: pointer;
+}
+</style>
+</head>
+<body>
+
+<!-- ═════ SCREEN 1: PRIMARY ═════ -->
+<div class="screen" id="screen-main">
+  <div class="app-topbar">
+    <div class="app-header">
+      <div>
+        <div class="app-title">Bid Calculator</div>
+        <div class="app-sub">inc. Labor Margin</div>
+      </div>
+      <button class="icon-btn" id="open-settings" aria-label="Settings">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span class="badge" id="settings-badge"></span>
+      </button>
+    </div>
+  </div>
+
+  <div class="app">
+    <div class="card">
+      <div class="card-header accent">
+        <span>Bid Numbers</span>
+        <button class="text-btn" id="clear-btn">Clear</button>
+      </div>
+      <button class="notice" id="main-notice" style="margin-top:12px"></button>
+      <div class="card-body">
+        <div class="row">
+          <span class="row-label">Equipment <small>(anchor)</small></span>
+          <input type="text" id="equip" class="currency-input" inputmode="numeric" autocomplete="off" placeholder="0">
+        </div>
+        <div class="row"><span class="row-label">Parts</span><span class="computed" id="out-parts">&mdash;</span></div>
+        <div class="row"><span class="row-label">Optional</span><span class="computed" id="out-optional">&mdash;</span></div>
+        <div class="row"><span class="row-label">Labor</span><span class="computed" id="out-labor">&mdash;</span></div>
+        <div class="row group-start"><span class="row-label">Design labor</span><span class="computed" id="out-design">&mdash;</span></div>
+        <div class="row"><span class="row-label">PM labor</span><span class="computed" id="out-pm">&mdash;</span></div>
+        <div class="row"><span class="row-label">Other labor</span><span class="computed" id="out-other">&mdash;</span></div>
+        <div class="row group-start"><span class="row-label strong">Bid Total <small>(exc. tax)</small></span><span class="computed total" id="out-total">&mdash;</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header accent"><span>Gross Margin</span></div>
+      <div class="metric">
+        <div class="metric-card" id="gm-card">
+          <div class="metric-title">Gross Margin<br><span>exc. labor costs</span></div>
+          <div class="metric-value" id="gm-val">&mdash;</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═════ SCREEN 2: SETTINGS ═════ -->
+<div class="screen" id="screen-settings">
+  <div class="app-topbar">
+    <div class="app-header">
+      <button class="back-btn" id="close-settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Back
+      </button>
+      <div class="app-title" style="font-size:17px">Settings</div>
+    </div>
+  </div>
+
+  <div class="app">
+    <div class="card">
+      <div class="card-header"><span>Mix Targets</span></div>
+      <div class="card-body" id="mix-body"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span>Margins</span></div>
+      <div class="card-body" id="margin-body"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span>Additional Labor</span></div>
+      <div class="card-body" id="adds-body"></div>
+    </div>
+
+    <button class="reset-btn" id="reset-btn">Reset all settings to defaults</button>
+  </div>
+</div>
+
+<script>
+  // ---- CONFIG ----
+  const MIX = [
+    { key: 'equip',    label: 'Equipment' },
+    { key: 'parts',    label: 'Parts' },
+    { key: 'optional', label: 'Optional' },
+    { key: 'labor',    label: 'Labor' }
+  ];
+  const MARGINS = [
+    { key: 'equip',    label: 'Equipment' },
+    { key: 'parts',    label: 'Parts' },
+    { key: 'optional', label: 'Optional' }
+  ];
+  const ADDS = [
+    { key: 'design', label: 'Design labor' },
+    { key: 'pm',     label: 'PM labor' },
+    { key: 'other',  label: 'Other labor' }
+  ];
+  const BASES = [
+    { key: 'proposal',  label: 'of proposal total' },
+    { key: 'equipment', label: 'of equipment total' },
+    { key: 'labor',     label: 'of labor total' }
+  ];
+  const GM_THRESHOLDS = { good: 0.45, warn: 0.30 };
+  const STORE_KEY = 'bidcalc-mobile-settings-v1';
+
+  const defaults = () => ({
+    mix:    { equip: 60, parts: 5, optional: 0, labor: 35 },
+    margin: { equip: 0, parts: 0, optional: 0 },
+    adds:   { design: { pct: 0, base: 'proposal' }, pm: { pct: 0, base: 'proposal' }, other: { pct: 0, base: 'proposal' } },
+    accept: {}   // e.g. 'margin.equip': true, 'adds.pm': true
+  });
+
+  // ---- STATE + STORAGE ----
+  function load() {
+    const d = defaults();
+    try {
+      const s = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      if (!s) return d;
+      return {
+        mix:    { ...d.mix, ...s.mix },
+        margin: { ...d.margin, ...s.margin },
+        adds:   Object.fromEntries(ADDS.map(a => [a.key, { ...d.adds[a.key], ...(s.adds || {})[a.key] }])),
+        accept: { ...s.accept }
+      };
+    } catch (e) { return d; }
+  }
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  let state = load();
+
+  // ---- HELPERS ----
+  const el = id => document.getElementById(id);
+  const fmt$ = v => Number.isFinite(v) ? '$' + Math.round(v).toLocaleString('en-US') : '—';
+  const fmtPct = v => Number.isFinite(v) ? (v * 100).toFixed(1) + '%' : '—';
+  const clamp = v => Math.min(100, Math.max(0, Math.round(v)));
+  const equipValue = () => {
+    const raw = el('equip').value.replace(/,/g, '');
+    if (raw === '') return NaN;
+    const v = parseFloat(raw);
+    return Number.isFinite(v) ? v : NaN;
+  };
+
+  // ---- SLIDER FACTORY ----
+  // Builds: label, % box (tap to type), range slider. onChange gets the clamped integer.
+  function sliderRow(id, label, value, onChange, extraHtml = '') {
+    const wrap = document.createElement('div');
+    wrap.className = 'slider-row';
+    wrap.innerHTML = `
+      <div class="slider-top">
+        <span class="slider-label">${label}</span>
+        <span class="pct-wrap">
+          <input type="number" class="pct-input" id="${id}-num" inputmode="numeric" min="0" max="100" step="1" value="${value}" aria-label="${label} percent">
+          <span class="pct-sign">%</span>
+        </span>
+      </div>
+      <input type="range" id="${id}-range" min="0" max="100" step="1" value="${value}" aria-label="${label}">
+      ${extraHtml}`;
+    const num = wrap.querySelector('.pct-input');
+    const range = wrap.querySelector('input[type=range]');
+    range.addEventListener('input', () => { num.value = range.value; onChange(+range.value); });
+    num.addEventListener('focus', () => num.select());
+    num.addEventListener('input', () => {
+      if (num.value === '') return;
+      const v = clamp(+num.value);
+      range.value = v;
+      onChange(v);
+    });
+    num.addEventListener('blur', () => {
+      const v = num.value === '' ? +range.value : clamp(+num.value);
+      num.value = v; range.value = v; onChange(v);
+    });
+    num.addEventListener('keydown', e => { if (e.key === 'Enter') num.blur(); });
+    return wrap;
+  }
+
+  function zeroWarnHtml(acceptKey) {
+    return `<div class="zero-warn" id="zw-${acceptKey.replace('.', '-')}">
+      <span>&#9888; Set at 0%</span>
+      <label><input type="checkbox" data-accept="${acceptKey}"> Accept 0%</label>
+    </div>`;
+  }
+
+  // ---- BUILD SETTINGS ----
+  function buildSettings() {
+    const mixBody = el('mix-body');
+    mixBody.innerHTML = '';
+    MIX.forEach(m => {
+      mixBody.appendChild(sliderRow('mix-' + m.key, m.label, state.mix[m.key], v => {
+        state.mix[m.key] = v; changed();
+      }));
+    });
+    const sum = document.createElement('div');
+    sum.className = 'sum-row';
+    sum.innerHTML = `<span class="sum-label">Sum:</span><span class="sum-val" id="mix-sum"></span><span class="sum-warn" id="mix-warn"></span>`;
+    mixBody.appendChild(sum);
+
+    const marginBody = el('margin-body');
+    marginBody.innerHTML = '';
+    MARGINS.forEach(m => {
+      const ak = 'margin.' + m.key;
+      marginBody.appendChild(sliderRow('margin-' + m.key, m.label, state.margin[m.key], v => {
+        state.margin[m.key] = v;
+        if (v > 0) delete state.accept[ak];
+        changed();
+      }, zeroWarnHtml(ak)));
+    });
+
+    const addsBody = el('adds-body');
+    addsBody.innerHTML = '';
+    ADDS.forEach(a => {
+      const ak = 'adds.' + a.key;
+      const opts = BASES.map(b => `<option value="${b.key}">${b.label}</option>`).join('');
+      const row = sliderRow('adds-' + a.key, a.label, state.adds[a.key].pct, v => {
+        state.adds[a.key].pct = v;
+        if (v > 0) delete state.accept[ak];
+        changed();
+      }, `<select class="base-select" id="adds-${a.key}-base" aria-label="${a.label} base">${opts}</select>` + zeroWarnHtml(ak));
+      const sel = row.querySelector('select');
+      sel.value = state.adds[a.key].base;
+      sel.addEventListener('change', () => { state.adds[a.key].base = sel.value; changed(); });
+      addsBody.appendChild(row);
+    });
+    const pp = document.createElement('div');
+    pp.className = 'sum-row';
+    pp.id = 'pp-row';
+    pp.innerHTML = `<span class="sum-warn" id="pp-warn"></span>`;
+    addsBody.appendChild(pp);
+
+    document.querySelectorAll('[data-accept]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) state.accept[cb.dataset.accept] = true;
+        else delete state.accept[cb.dataset.accept];
+        changed();
+      });
+    });
+  }
+
+  // ---- CALCULATION ----
+  function compute(equip) {
+    const mx = state.mix;
+    const mixSum = mx.equip + mx.parts + mx.optional + mx.labor;
+    const mixE = mx.equip / 100, mixP = mx.parts / 100, mixO = mx.optional / 100, mixL = mx.labor / 100;
+    const mE = state.margin.equip / 100, mP = state.margin.parts / 100, mO = state.margin.optional / 100;
+
+    const errors = [];
+    if (mixSum !== 100) errors.push('Mix targets total ' + mixSum + '% — must be 100%.');
+    else if (mx.equip === 0) errors.push('Equipment mix is 0% — it must be above 0% to anchor the bid.');
+
+    let pp = 0;
+    ADDS.forEach(a => { if (state.adds[a.key].base === 'proposal') pp += state.adds[a.key].pct / 100; });
+    if (pp >= 1) errors.push('"Of proposal total" labor adds total ' + Math.round(pp * 100) + '% — must be below 100%.');
+
+    const r = { errors, mixSum, pp };
+    if (errors.length || !Number.isFinite(equip)) return r;
+
+    const t0 = equip / mixE;
+    r.equip = equip;
+    r.parts = t0 * mixP;
+    r.optional = t0 * mixO;
+    r.labor = t0 * mixL;
+    const baseOf = { equipment: equip, labor: r.labor };
+
+    let fixed = 0;
+    ADDS.forEach(a => {
+      const ad = state.adds[a.key];
+      if (ad.base !== 'proposal') { r[a.key] = (ad.pct / 100) * baseOf[ad.base]; fixed += r[a.key]; }
+    });
+    r.total = (t0 + fixed) / (1 - pp);
+    ADDS.forEach(a => {
+      const ad = state.adds[a.key];
+      if (ad.base === 'proposal') r[a.key] = (ad.pct / 100) * r.total;
+    });
+
+    const cost = equip * (1 - mE) + r.parts * (1 - mP) + r.optional * (1 - mO);
+    r.gm = r.total > 0 ? 1 - cost / r.total : NaN;
+    return r;
+  }
+
+  // Unaccepted 0% margins / labor adds.
+  function zeroWarnings() {
+    const list = [];
+    MARGINS.forEach(m => { if (state.margin[m.key] === 0 && !state.accept['margin.' + m.key]) list.push('margin.' + m.key); });
+    ADDS.forEach(a => { if (state.adds[a.key].pct === 0 && !state.accept['adds.' + a.key]) list.push('adds.' + a.key); });
+    return list;
+  }
+
+  // ---- RENDER ----
+  function render() {
+    const equip = equipValue();
+    // GM is scale-invariant, so show it from a unit anchor even before Equipment is entered.
+    const r = compute(Number.isFinite(equip) ? equip : 1);
+    const hasEquip = Number.isFinite(equip) && equip > 0;
+    const money = k => hasEquip ? fmt$(r[k]) : '—';
+
+    el('out-parts').textContent    = money('parts');
+    el('out-optional').textContent = money('optional');
+    el('out-labor').textContent    = money('labor');
+    el('out-design').textContent   = money('design');
+    el('out-pm').textContent       = money('pm');
+    el('out-other').textContent    = money('other');
+    el('out-total').textContent    = money('total');
+
+    el('gm-val').textContent = fmtPct(r.gm);
+    const card = el('gm-card');
+    card.classList.remove('good', 'warn', 'bad');
+    if (Number.isFinite(r.gm)) {
+      card.classList.add(r.gm >= GM_THRESHOLDS.good ? 'good' : r.gm >= GM_THRESHOLDS.warn ? 'warn' : 'bad');
+    }
+
+    // Settings: mix sum
+    const sumEl = el('mix-sum');
+    sumEl.textContent = r.mixSum + '%';
+    sumEl.className = 'sum-val ' + (r.mixSum === 100 ? 'ok' : 'bad');
+    el('mix-warn').textContent = r.mixSum === 100 ? (state.mix.equip === 0 ? '⚠ Equipment must be above 0%' : '') : '⚠ Must total 100%';
+
+    // Settings: proposal-base gross-up guard
+    el('pp-warn').textContent = r.pp >= 1 ? '⚠ "Of proposal total" items total ' + Math.round(r.pp * 100) + '% — must be below 100%' : '';
+    el('pp-row').style.display = r.pp >= 1 ? 'flex' : 'none';
+
+    // Settings: zero warnings
+    const zw = zeroWarnings();
+    [...MARGINS.map(m => 'margin.' + m.key), ...ADDS.map(a => 'adds.' + a.key)].forEach(ak => {
+      const [grp, key] = ak.split('.');
+      const pct = grp === 'margin' ? state.margin[key] : state.adds[key].pct;
+      const box = el('zw-' + grp + '-' + key);
+      box.classList.toggle('on', pct === 0);
+      box.classList.toggle('accepted', !!state.accept[ak]);
+      box.querySelector('input').checked = !!state.accept[ak];
+    });
+
+    // Primary: badge + notice
+    const issues = r.errors.length + zw.length;
+    el('settings-badge').classList.toggle('on', issues > 0);
+    const notice = el('main-notice');
+    if (r.errors.length) {
+      notice.textContent = '⚠ ' + r.errors[0] + ' Tap to fix in Settings.';
+      notice.classList.add('on');
+    } else if (zw.length) {
+      notice.textContent = '⚠ ' + zw.length + ' setting' + (zw.length > 1 ? 's are' : ' is') + ' at 0%. Tap to review in Settings.';
+      notice.classList.add('on');
+    } else {
+      notice.classList.remove('on');
+    }
+  }
+
+  function changed() { save(); render(); }
+
+  // ---- EQUIPMENT INPUT ----
+  const equipInput = el('equip');
+  function formatEquip() {
+    const raw = equipInput.value.replace(/[^0-9.]/g, '');
+    if (raw === '') { equipInput.value = ''; return; }
+    const v = parseFloat(raw);
+    equipInput.value = Number.isFinite(v) ? Math.round(v).toLocaleString('en-US') : '';
+  }
+  equipInput.addEventListener('focus', () => { equipInput.value = equipInput.value.replace(/,/g, ''); });
+  equipInput.addEventListener('input', () => {
+    const clean = equipInput.value.replace(/[^0-9]/g, '');
+    if (clean !== equipInput.value) equipInput.value = clean;
+    render();
+  });
+  equipInput.addEventListener('blur', () => { formatEquip(); render(); });
+  equipInput.addEventListener('keydown', e => { if (e.key === 'Enter') equipInput.blur(); });
+
+  el('clear-btn').addEventListener('click', () => { equipInput.value = ''; render(); });
+
+  el('reset-btn').addEventListener('click', () => {
+    if (!confirm('Reset all settings to defaults?')) return;
+    state = defaults();
+    buildSettings();
+    changed();
+  });
+
+  // ---- SCREENS (hash routing so the phone's back gesture works) ----
+  function showScreen() {
+    const settings = location.hash === '#settings';
+    el('screen-main').classList.toggle('active', !settings);
+    el('screen-settings').classList.toggle('active', settings);
+    window.scrollTo(0, 0);
+  }
+  let openedFromMain = false;
+  const openSettings = () => { openedFromMain = true; location.hash = 'settings'; };
+  el('open-settings').addEventListener('click', openSettings);
+  el('main-notice').addEventListener('click', openSettings);
+  el('close-settings').addEventListener('click', () => {
+    // Pop the entry we pushed so Back doesn't bounce into Settings again.
+    if (openedFromMain) { openedFromMain = false; history.back(); }
+    else history.replaceState(null, '', location.pathname + location.search), showScreen();
+  });
+  window.addEventListener('hashchange', showScreen);
+
+  buildSettings();
+  showScreen();
+  render();
+</script>
+</body>
+</html>
