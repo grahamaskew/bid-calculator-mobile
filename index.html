@@ -706,11 +706,13 @@ select.base-select {
 
     const errors = [];
 
-    let pp = 0;
-    ADDS.forEach(a => { if (state.adds[a.key].base === 'proposal') pp += state.adds[a.key].pct / 100; });
-    if (pp >= 1) errors.push('"Of proposal total" labor adds total ' + Math.round(pp * 100) + '% — must be below 100%.');
+    // Sum whole percents before dividing: 0.7 + 0.2 + 0.1 is 0.9999999999999999 in floats.
+    let ppPct = 0;
+    ADDS.forEach(a => { if (state.adds[a.key].base === 'proposal') ppPct += state.adds[a.key].pct; });
+    if (ppPct >= 100) errors.push('"Of proposal total" labor adds total ' + ppPct + '% — must be below 100%.');
+    const pp = ppPct / 100;
 
-    const r = { errors, pp };
+    const r = { errors, ppPct };
     if (errors.length || !Number.isFinite(equip)) return r;
 
     const t0 = equip / mixE;
@@ -778,8 +780,8 @@ select.base-select {
     el('mix-equip-out').textContent = 100 - mixOthers(state.mix);
 
     // Settings: proposal-base gross-up guard
-    el('pp-warn').textContent = r.pp >= 1 ? '⚠ "Of proposal total" items total ' + Math.round(r.pp * 100) + '% — must be below 100%' : '';
-    el('pp-row').style.display = r.pp >= 1 ? 'flex' : 'none';
+    el('pp-warn').textContent = r.ppPct >= 100 ? '⚠ "Of proposal total" items total ' + r.ppPct + '% — must be below 100%' : '';
+    el('pp-row').style.display = r.ppPct >= 100 ? 'flex' : 'none';
 
     // Settings: zero warnings
     const zw = zeroWarnings();
@@ -817,7 +819,10 @@ select.base-select {
   }
   equipInput.addEventListener('focus', () => { equipInput.value = equipInput.value.replace(/,/g, ''); });
   equipInput.addEventListener('input', () => {
-    const clean = equipInput.value.replace(/[^0-9]/g, '');
+    // Keep digits and the first decimal point, so a pasted "60,000.50" stays 60000.50
+    // (rounded on blur) rather than becoming 6000050.
+    const parts = equipInput.value.replace(/[^0-9.]/g, '').split('.');
+    const clean = parts.length > 1 ? parts[0] + '.' + parts.slice(1).join('') : parts[0];
     if (clean !== equipInput.value) equipInput.value = clean;
     render();
   });
