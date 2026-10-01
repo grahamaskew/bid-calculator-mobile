@@ -563,13 +563,15 @@ select.base-select {
       </div>`;
     mixBody.appendChild(eqRow);
     MIX.forEach(m => {
+      const ak = 'mix.' + m.key;
       mixBody.appendChild(sliderRow('mix-' + m.key, m.label, state.mix[m.key], v => {
         // Cap so the others never leave Equipment below 1%.
         const room = MAX_OTHERS - (mixOthers(state.mix) - state.mix[m.key]);
         state.mix[m.key] = Math.min(v, room);
+        if (state.mix[m.key] > 0) delete state.accept[ak];
         changed();
         return state.mix[m.key];
-      }));
+      }, m.key === 'optional' ? zeroWarnHtml(ak) : ''));
     });
 
     const marginBody = el('margin-body');
@@ -652,11 +654,19 @@ select.base-select {
   }
 
   // Unaccepted 0% margins / labor adds.
+  // Settings that may warn at 0%. Optional mix and Optional margin are a pair:
+  // each warns at 0% only once the other is above 0% (Optional unused = no warning).
+  const ZERO_CHECKS = [
+    ...MARGINS.filter(m => m.key !== 'optional').map(m => ({ ak: 'margin.' + m.key, pct: () => state.margin[m.key], applies: () => true })),
+    { ak: 'margin.optional', pct: () => state.margin.optional, applies: () => state.mix.optional > 0 },
+    { ak: 'mix.optional',    pct: () => state.mix.optional,    applies: () => state.margin.optional > 0 },
+    ...ADDS.map(a => ({ ak: 'adds.' + a.key, pct: () => state.adds[a.key].pct, applies: () => true }))
+  ];
+  const needsZeroWarn = c => c.pct() === 0 && c.applies();
+
+  // Unaccepted 0% settings.
   function zeroWarnings() {
-    const list = [];
-    MARGINS.forEach(m => { if (state.margin[m.key] === 0 && !state.accept['margin.' + m.key]) list.push('margin.' + m.key); });
-    ADDS.forEach(a => { if (state.adds[a.key].pct === 0 && !state.accept['adds.' + a.key]) list.push('adds.' + a.key); });
-    return list;
+    return ZERO_CHECKS.filter(c => needsZeroWarn(c) && !state.accept[c.ak]).map(c => c.ak);
   }
 
   // ---- RENDER ----
@@ -691,13 +701,11 @@ select.base-select {
 
     // Settings: zero warnings
     const zw = zeroWarnings();
-    [...MARGINS.map(m => 'margin.' + m.key), ...ADDS.map(a => 'adds.' + a.key)].forEach(ak => {
-      const [grp, key] = ak.split('.');
-      const pct = grp === 'margin' ? state.margin[key] : state.adds[key].pct;
-      const box = el('zw-' + grp + '-' + key);
-      box.classList.toggle('on', pct === 0);
-      box.classList.toggle('accepted', !!state.accept[ak]);
-      box.querySelector('input').checked = !!state.accept[ak];
+    ZERO_CHECKS.forEach(c => {
+      const box = el('zw-' + c.ak.replace('.', '-'));
+      box.classList.toggle('on', needsZeroWarn(c));
+      box.classList.toggle('accepted', !!state.accept[c.ak]);
+      box.querySelector('input').checked = !!state.accept[c.ak];
     });
 
     // Primary: badge + notice
