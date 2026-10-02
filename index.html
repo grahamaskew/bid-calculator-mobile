@@ -34,6 +34,9 @@
   --bg-card:       #FFFFFF;
   --bg-subtle:     #F1F5F9;
   --border:        #E2E8F0;
+  --green:         #15803D;
+  --green-light:   #DCFCE7;
+  --green-mid:     #86EFAC;
   --amber:         #B45309;
   --amber-light:   #FEF3C7;
   --red:           #B91C1C;
@@ -263,12 +266,14 @@ body {
   letter-spacing: -0.5px;
 }
 .metric-sub { font-family: var(--mono); font-size: 15px; font-weight: 600; margin-top: 2px; }
-.metric-card.good { border-color: var(--accent-mid); background: var(--accent-light); }
-.metric-card.warn { border-color: var(--amber); background: var(--amber-light); }
-.metric-card.bad  { border-color: var(--red); background: var(--red-light); }
-.metric-card.good .metric-value, .metric-card.good .metric-title, .metric-card.good .metric-sub { color: var(--accent); }
-.metric-card.warn .metric-value, .metric-card.warn .metric-title, .metric-card.warn .metric-sub { color: var(--amber); }
-.metric-card.bad  .metric-value, .metric-card.bad  .metric-title, .metric-card.bad  .metric-sub { color: var(--red); }
+.metric-card.blue  { border-color: var(--accent-mid); background: var(--accent-light); }
+.metric-card.green { border-color: var(--green-mid); background: var(--green-light); }
+.metric-card.amber { border-color: var(--amber); background: var(--amber-light); }
+.metric-card.red   { border-color: var(--red); background: var(--red-light); }
+.metric-card.blue  .metric-value, .metric-card.blue  .metric-title, .metric-card.blue  .metric-sub { color: var(--accent); }
+.metric-card.green .metric-value, .metric-card.green .metric-title, .metric-card.green .metric-sub { color: var(--green); }
+.metric-card.amber .metric-value, .metric-card.amber .metric-title, .metric-card.amber .metric-sub { color: var(--amber); }
+.metric-card.red   .metric-value, .metric-card.red   .metric-title, .metric-card.red   .metric-sub { color: var(--red); }
 
 .notice {
   display: none;
@@ -308,6 +313,17 @@ body {
   outline: none;
   -moz-appearance: textfield;
 }
+.name-input {
+  flex: 1; min-width: 0; max-width: 220px;
+  font-family: var(--sans); font-size: 16px;   /* 16px stops iOS zoom */
+  min-height: 40px; padding: 6px 10px;
+  border: 1.5px solid var(--input-border);
+  background: var(--input-bg);
+  border-radius: 8px;
+  color: var(--text-primary);
+  outline: none;
+}
+.pct-input:focus, .paste-input:focus, .name-input:focus { box-shadow: 0 0 0 3px rgba(220,38,38,0.15); }
 .pct-input::-webkit-inner-spin-button, .pct-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .computed-pct {
   display: inline-block;
@@ -379,6 +395,9 @@ select.base-select {
 .zero-warn.accepted { background: var(--bg-subtle); color: var(--text-faint); }
 .zero-warn label { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; font-weight: 500; white-space: nowrap; cursor: pointer; }
 .zero-warn input { width: 20px; height: 20px; accent-color: var(--amber); }
+
+.cap-hint { display: none; margin-top: 4px; padding: 8px 10px; border-radius: 8px; background: var(--amber-light); color: var(--amber); font-size: 13px; }
+.cap-hint.on { display: block; }
 
 .sum-row {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -488,7 +507,7 @@ select.base-select {
           <input type="text" id="equip" class="currency-input" inputmode="numeric" autocomplete="off" placeholder="0">
         </div>
         <div class="row"><span class="row-label">Parts</span><span class="computed" id="out-parts">&mdash;</span></div>
-        <div class="row"><span class="row-label">Optional</span><span class="computed" id="out-optional">&mdash;</span></div>
+        <div class="row"><span class="row-label" data-optname>Optional</span><span class="computed" id="out-optional">&mdash;</span></div>
         <div class="row"><span class="row-label">Labor</span><span class="computed" id="out-labor">&mdash;</span></div>
         <div class="row group-start"><span class="row-label">Design labor</span><span class="computed" id="out-design">&mdash;</span></div>
         <div class="row"><span class="row-label">PM labor</span><span class="computed" id="out-pm">&mdash;</span></div>
@@ -586,16 +605,29 @@ select.base-select {
   ];
   const PROPOSAL_WARN_PCT = 50;  // combined proposal-based labor adds above this are flagged (still allowed below 100)
   const ADDS_SLIDER_MAX = 25;   // Additional labor sliders span 0–25% for finer control; typed values go to 100%
-  const GM_THRESHOLDS = { good: 0.45, warn: 0.30 };
+  // GM card colour, judged on the displayed % in whole tenths so the colour always matches the number shown:
+  // red below 38.0, amber 38.0–45.0, green above 45.0 up to 55.0, blue above 55.0.
+  const GM_THRESHOLDS = { red: 380, amber: 450, green: 550 };
   const STORE_KEY = 'bidcalc-mobile-settings-v1';
   const MAX_OTHERS = 99;   // keeps Equipment mix at 1% or more, so it can anchor the bid
   const mixOthers = mix => mix.parts + mix.optional + mix.labor;
+  // Settings that can carry an "Accept 0%" override; anything else in a link or storage is dropped.
+  const ACCEPT_KEYS = ['margin.equip', 'margin.parts', 'margin.optional', 'mix.optional'];
+
+  // The Optional line can be renamed (Mix Targets). The name follows to Margins, the Additional Labor
+  // "exc." base and the primary screen, and travels in share links. Always shown as plain text, never HTML.
+  const OPT_DEFAULT = 'Optional';
+  const OPT_NAME_MAX = 20;   // keeps the primary-screen row and the dropdown readable on a phone
+  const cleanOptName = v => typeof v === 'string'
+    ? Array.from(v.replace(/[\u0000-\u001F\u007F]/g, '')).slice(0, OPT_NAME_MAX).join('') : '';
+  const optName = () => state.optName.trim() || OPT_DEFAULT;
 
   const defaults = () => ({
     mix:    { parts: 5, optional: 0, labor: 35 },
     margin: { equip: 0, parts: 0, optional: 0 },
     adds:   { design: { pct: 0, base: 'proposal' }, pm: { pct: 0, base: 'proposal' }, other: { pct: 0, base: 'proposal' } },
-    accept: {}   // e.g. 'margin.equip': true, 'mix.optional': true
+    accept: {},  // e.g. 'margin.equip': true, 'mix.optional': true
+    optName: OPT_DEFAULT
   });
 
   // ---- STATE + STORAGE ----
@@ -610,8 +642,8 @@ select.base-select {
       const x = (s.adds || {})[a.key] || {};
       adds[a.key] = { pct: pct(x.pct, d.adds[a.key].pct), base: BASES.some(b => b.key === x.base) ? x.base : d.adds[a.key].base };
     });
-    Object.keys(s.accept || {}).forEach(k => { if (s.accept[k] === true) accept[k] = true; });
-    return { mix: mixOthers(mix) <= MAX_OTHERS ? mix : d.mix, margin, adds, accept };
+    ACCEPT_KEYS.forEach(k => { if ((s.accept || {})[k] === true) accept[k] = true; });
+    return { mix: mixOthers(mix) <= MAX_OTHERS ? mix : d.mix, margin, adds, accept, optName: cleanOptName(s.optName).trim() || d.optName };
   }
   function load() {
     try {
@@ -683,7 +715,12 @@ select.base-select {
     return r === fl && v - fl > 0.5 - tol ? fl + 1 : r;
   };
   const fmt$ = v => Number.isFinite(v) ? '$' + roundHalfUp(v).toLocaleString('en-US') : '—';
-  const fmtPct = v => Number.isFinite(v) ? (roundHalfUp(v * 1000, 1e-9) / 10).toFixed(1) + '%' : '—';
+  const gmTenths = v => roundHalfUp(v * 1000, 1e-9);   // GM as whole tenths of a percent, e.g. 0.4504 → 450
+  const fmtPct = v => Number.isFinite(v) ? (gmTenths(v) / 10).toFixed(1) + '%' : '—';
+  const gmColour = v => {
+    const t = gmTenths(v);
+    return t < GM_THRESHOLDS.red ? 'red' : t <= GM_THRESHOLDS.amber ? 'amber' : t <= GM_THRESHOLDS.green ? 'green' : 'blue';
+  };
   const clamp = v => Math.min(100, Math.max(0, Math.round(v)));
   const equipValue = () => {
     const raw = el('equip').value.replace(/,/g, '');
@@ -753,25 +790,36 @@ select.base-select {
     mixBody.appendChild(eqRow);
     MIX.forEach(m => {
       const ak = 'mix.' + m.key;
-      mixBody.appendChild(sliderRow('mix-' + m.key, m.label, state.mix[m.key], v => {
+      const row = sliderRow('mix-' + m.key, m.label, state.mix[m.key], v => {
         // Cap so the others never leave Equipment below 1%.
         const room = MAX_OTHERS - (mixOthers(state.mix) - state.mix[m.key]);
         state.mix[m.key] = Math.min(v, room);
+        const hint = el('mix-cap');
+        hint.textContent = v > room ? (m.key === 'optional' ? optName() : m.label) + ' is capped at ' + room + '%: Equipment must stay at 1% or more.' : '';
+        hint.classList.toggle('on', v > room);
         if (state.mix[m.key] > 0) delete state.accept[ak];
         changed();
         return state.mix[m.key];
-      }, m.key === 'optional' ? zeroWarnHtml(ak) : ''));
+      }, m.key === 'optional' ? zeroWarnHtml(ak) : '');
+      if (m.key === 'optional') row.querySelector('.slider-label').replaceWith(optNameInput());
+      mixBody.appendChild(row);
     });
+    const capHint = document.createElement('div');
+    capHint.className = 'cap-hint';
+    capHint.id = 'mix-cap';
+    mixBody.appendChild(capHint);
 
     const marginBody = el('margin-body');
     marginBody.innerHTML = '';
     MARGINS.forEach(m => {
       const ak = 'margin.' + m.key;
-      marginBody.appendChild(sliderRow('margin-' + m.key, m.label, state.margin[m.key], v => {
+      const row = sliderRow('margin-' + m.key, m.label, state.margin[m.key], v => {
         state.margin[m.key] = v;
         if (v > 0) delete state.accept[ak];
         changed();
-      }, zeroWarnHtml(ak)));
+      }, zeroWarnHtml(ak));
+      if (m.key === 'optional') row.querySelector('.slider-label').dataset.optname = '';
+      marginBody.appendChild(row);
     });
 
     const addsBody = el('adds-body');
@@ -800,7 +848,48 @@ select.base-select {
         changed();
       });
     });
+    applyNames();
     applyLock();
+  }
+
+  // The editable name that replaces the Optional label in Mix Targets.
+  function optNameInput() {
+    const box = document.createElement('input');
+    box.type = 'text';
+    box.id = 'opt-name';
+    box.className = 'name-input';
+    box.maxLength = OPT_NAME_MAX;
+    box.placeholder = OPT_DEFAULT;
+    box.autocomplete = 'off';
+    box.spellcheck = false;
+    box.setAttribute('aria-label', 'Name for the Optional line');
+    box.value = state.optName;
+    box.addEventListener('input', () => {
+      const c = cleanOptName(box.value);
+      if (c !== box.value) box.value = c;
+      state.optName = c;   // a blank name shows as "Optional" everywhere until something is typed
+      applyNames();
+      save();
+    });
+    box.addEventListener('blur', () => {
+      state.optName = optName();
+      box.value = state.optName;
+      applyNames();
+      save();
+    });
+    box.addEventListener('keydown', e => { if (e.key === 'Enter') box.blur(); });
+    return box;
+  }
+
+  // Puts the Optional line's name everywhere it appears. Updates text in place, so typing keeps focus.
+  function applyNames() {
+    const n = optName();
+    document.querySelectorAll('[data-optname]').forEach(s => { s.textContent = n; });
+    document.querySelectorAll('option[value="proposalExOpt"]').forEach(o => { o.textContent = 'of proposal total exc. ' + n; });
+    ['mix-optional', 'margin-optional'].forEach(id => {
+      el(id + '-num').setAttribute('aria-label', n + ' percent');
+      el(id + '-range').setAttribute('aria-label', n);
+    });
   }
 
   // Disables every settings control except the lock itself and Share (sharing changes nothing).
@@ -897,9 +986,9 @@ select.base-select {
     el('gm-val').textContent = showGm ? fmtPct(r.gm) : '—%';
     el('gp-val').textContent = showGm ? fmt$(r.total * r.gm) + ' gross profit' : '';
     const card = el('gm-card');
-    card.classList.remove('good', 'warn', 'bad');
+    card.classList.remove('blue', 'green', 'amber', 'red');
     if (showGm) {
-      card.classList.add(r.gm >= GM_THRESHOLDS.good ? 'good' : r.gm >= GM_THRESHOLDS.warn ? 'warn' : 'bad');
+      card.classList.add(gmColour(r.gm));
     }
 
     // Settings: Equipment mix = balance
@@ -986,8 +1075,8 @@ select.base-select {
     const flash = msg => { btn.textContent = msg; setTimeout(() => { btn.textContent = 'Share settings link'; }, 2000); };
     // Phones: native share sheet. Laptops: copy to clipboard.
     if (navigator.share && matchMedia('(pointer: coarse)').matches) {
-      try { await navigator.share({ title: 'Bid Calculator settings', url }); } catch (e) {}
-      return;
+      try { await navigator.share({ title: 'Bid Calculator settings', url }); return; }
+      catch (e) { if (e.name === 'AbortError') return; }   // cancelled; any real failure falls back to copy
     }
     try { await navigator.clipboard.writeText(url); flash('Link copied ✓'); }
     catch (e) { prompt('Copy this settings link:', url); }
@@ -1027,6 +1116,17 @@ select.base-select {
     }
   });
   window.addEventListener('hashchange', showScreen);
+
+  // Another tab changed settings or the lock: pick it up, so a stale tab can't overwrite newer settings.
+  window.addEventListener('storage', e => {
+    if (e.key === STORE_KEY) { state = load(); buildSettings(); render(); }
+    if (e.key === LOCK_KEY) { locked = e.newValue === '1'; applyLock(); }
+  });
+
+  // Offline support: the service worker keeps a copy so the home-screen app opens without signal.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  }
 
   buildSettings();
   showScreen();
